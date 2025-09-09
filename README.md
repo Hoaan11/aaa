@@ -1,1 +1,246 @@
-# aaa
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Love Rain ➜ Countdown ➜ Fireworks ➜ Love Letter</title>
+<style>
+  :root{
+    --bg:#000;
+    --white:#fff;
+    --heart:#ff4d6d;
+    --soft:#ffe8f0;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--white);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+
+  #stageCanvas{position:fixed;inset:0;display:block;width:100%;height:100%}
+
+  .hud{position:fixed;inset:0;pointer-events:none}
+  .center{position:absolute;inset:0;display:grid;place-items:center}
+  .countdown{font-size:min(18vw,180px);font-weight:800;letter-spacing:.04em;text-shadow:0 10px 40px rgba(255,153,200,.5),0 0 80px rgba(255,77,109,.6)}
+
+  .cta{position:fixed;right:14px;bottom:14px;display:flex;gap:8px;align-items:center}
+  .btn{pointer-events:auto;cursor:pointer;border:none;padding:10px 14px;border-radius:999px;font-weight:700}
+  .btn.heart{background:var(--heart);color:#fff;box-shadow:0 8px 30px rgba(255,77,109,.35)}
+  .btn.ghost{background:transparent;color:#fff;border:2px dashed rgba(255,255,255,.25)}
+
+  .letterWrap{position:fixed;left:50%;bottom:-40vh;transform:translateX(-50%);width:min(560px,92vw);transition:bottom 1s ease-out}
+  .letterWrap.fly{bottom:18vh}
+  .envelope{position:relative;width:100%;aspect-ratio:4/2.6;background:var(--soft);border-radius:16px;box-shadow:0 12px 44px rgba(255,153,200,.25), inset 0 0 0 2px rgba(255,255,255,.7)}
+  .envelope:after{content:"";position:absolute;inset:0;border-radius:16px;box-shadow:inset 0 0 0 2px rgba(255,77,109,.12);pointer-events:none}
+  .paper{position:absolute;left:6%;top:8%;right:6%;bottom:10%;background:#fff;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,.1);padding:18px 16px;overflow:auto}
+  .paper h2{margin:4px 0 8px;font-size:clamp(18px,3vw,24px);color:#222}
+  .paper p{margin:6px 0;font-size:clamp(14px,2.2vw,18px);color:#444;line-height:1.55}
+  .typewriter{border-right:3px solid var(--heart);white-space:pre-wrap;overflow:hidden}
+
+  .overlay{position:fixed;inset:0;background:radial-gradient(1200px 600px at 50% 100%, rgba(255,153,200,.18), rgba(0,0,0,.85));display:none;place-items:center;padding:24px}
+  .overlay.show{display:grid}
+  .card{max-width:min(760px,92vw);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(8px);border-radius:24px;padding:28px 22px;box-shadow:0 20px 60px rgba(255,153,200,.25)}
+  .card h1{margin:0 0 6px;font-size:clamp(26px,5vw,40px)}
+  .card p{margin:8px 0 0;font-size:clamp(16px,3vw,20px);opacity:.95}
+
+  .hint{position:fixed;left:12px;bottom:12px;font-size:12px;opacity:.65}
+
+  /* mini error banner */
+  #err{position:fixed;left:12px;top:12px;max-width:70vw;background:#300;border:1px solid #933;color:#fcc;padding:8px 10px;border-radius:10px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;display:none;white-space:pre-wrap}
+</style>
+</head>
+<body>
+  <canvas id="stageCanvas"></canvas>
+  <div id="err"></div>
+
+  <div class="hud">
+    <div class="center"><div id="countdown" class="countdown" style="display:none">3</div></div>
+  </div>
+
+  <div class="cta" id="cta" style="display:none">
+    <button class="btn heart" id="heartBtn">❤</button>
+    <button class="btn ghost" id="restartBtn" title="Chơi lại">Chơi lại</button>
+  </div>
+
+  <div class="letterWrap" id="letterWrap" style="display:none">
+    <div class="envelope"><div class="paper">
+      <h2>Gửi Em Yêu,</h2>
+      <p id="typer" class="typewriter"></p>
+    </div></div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="card">
+      <h1>Em đồng ý làm người yêu của anh nhé? 💖</h1>
+      <p>Anh Yêu Em — mãi mãi. Cùng nhau ngắm mưa tim rơi thật đẹp nhé!</p>
+    </div>
+  </div>
+
+ <script>
+(() => {
+  // ===== Helper & error banner =====
+  const $ = s => document.querySelector(s);
+  const errBox = $('#err');
+  window.addEventListener('error', e=>{ errBox.textContent = e.message; errBox.style.display='block'; });
+
+  // ===== Canvas setup =====
+  const canvas = $('#stageCanvas');
+  const ctx = canvas.getContext('2d');
+  function size(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+  size(); addEventListener('resize', size);
+  let W = ()=>canvas.width, H = ()=>canvas.height;
+
+  // ===== Rain particles =====
+  const RAIN_TEXTS = ['a iu bé','iuiu','a yêu e','mãi iu','iu bé nhiều','love u','my girl','forever','with u','💖','💗','💞','💘'];
+  class RainParticle{
+    constructor(){ this.reset(true); }
+    reset(initial=false){
+      this.x = Math.random()*W();
+      this.y = initial ? Math.random()*H() : -20;
+      this.vy = 1.2 + Math.random()*1.8;
+      this.vx = (Math.random()-.5)*.3;
+      this.spin = (Math.random()-.5)*0.05;
+      this.a = Math.random()*Math.PI*2;
+      this.size = 12 + Math.random()*22;
+      this.isHeart = Math.random() < 0.45;
+      this.text = RAIN_TEXTS[(Math.random()*RAIN_TEXTS.length)|0];
+      this.alpha = .6 + Math.random()*.4;
+      this.hue = 330 + Math.random()*30; // hồng
+    }
+    draw(){
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.a);
+      if(this.isHeart){
+        const s = this.size * .06;
+        ctx.fillStyle = `hsl(${this.hue} 90% 62%)`;
+        ctx.beginPath();
+        for(let t=0;t<Math.PI*2;t+=.2){
+          const x = 16*Math.pow(Math.sin(t),3);
+          const y = 13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
+          ctx.lineTo(x*s, -y*s);
+        }
+        ctx.closePath(); ctx.fill();
+      }else{
+        ctx.fillStyle = `hsl(${this.hue} 100% 85%)`;
+        ctx.font = `${this.size}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.fillText(this.text, 0, 0);
+      }
+      ctx.restore();
+    }
+    update(){
+      this.y += this.vy; this.x += this.vx; this.a += this.spin;
+      if(this.y > H()+40 || this.x < -60 || this.x > W()+60) this.reset();
+    }
+  }
+
+  // ===== Fireworks =====
+  class Spark{
+    constructor(x,y,color){
+      this.x=x; this.y=y; this.vx=(Math.random()*2-1)*4; this.vy=(Math.random()*2-1)*4;
+      this.life=50+Math.random()*30; this.age=0; this.color=color; this.size=2+Math.random()*2;
+    }
+    step(){ this.age++; this.x+=this.vx; this.y+=this.vy; this.vy+=0.04; this.vx*=0.99; this.vy*=0.99; }
+    draw(){ const a = 1 - this.age/this.life; if(a<=0) return; ctx.globalAlpha=a; ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; }
+    alive(){ return this.age < this.life; }
+  }
+  function spawnFirework(x,y){ const hue=330+Math.random()*30; const color=`hsl(${hue} 100% 70%)`; for(let i=0;i<100;i++) sparks.push(new Spark(x,y,color)); }
+
+  // ===== Stage control =====
+  let particles = Array.from({length:120}, ()=>new RainParticle());
+  let sparks = [];
+  let stage = 1; // 1 rain, 2 letter
+  let rainStart = performance.now();
+  const RAIN_DURATION = 6000; // ms
+
+  const cdEl = $('#countdown');
+  let countdownStarted=false, countdownValue=3, countdownTimer=0;
+  function startCountdown(){ countdownStarted=true; cdEl.style.display='block'; countdownValue=3; cdEl.textContent='3'; countdownTimer=performance.now(); }
+  function handleCountdown(now){
+    const elapsed = now - countdownTimer;
+    if(elapsed>900){
+      countdownValue--; countdownTimer = now; cdEl.textContent = countdownValue>0?countdownValue:'';
+      if(countdownValue===0){
+        for(let i=0;i<6;i++) spawnFirework(Math.random()*W(), Math.random()*H()*0.7 + H()*0.15);
+        cdEl.style.display='none'; setTimeout(()=>switchToStage2(), 1200);
+      }
+    }
+  }
+
+  function drawBackground(){ ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(0,0,W(),H()); }
+  function stage1Frame(now){
+    drawBackground(); particles.forEach(p=>{p.draw(); p.update();});
+    if(!countdownStarted && now - rainStart > RAIN_DURATION) startCountdown();
+    if(countdownStarted) handleCountdown(now);
+    sparks = sparks.filter(s=>s.alive()); sparks.forEach(s=>{s.step(); s.draw();});
+  }
+
+  // ===== Stage 2: letter =====
+  const letterWrap = $('#letterWrap');
+  const cta = $('#cta');
+  const heartBtn = $('#heartBtn');
+  const restartBtn = $('#restartBtn');
+  const overlay = $('#overlay');
+  const typer = $('#typer');
+
+  // ✅ Dùng template string để không lỗi xuống dòng
+  const LETTER_TEXT = `Gửi em,
+
+Anh viết cho em những dòng này bằng tất cả trái tim mình.
+Từ khi có em, cuộc sống của anh như được thắp sáng thêm một ngọn lửa dịu dàng, ấm áp. Mỗi nụ cười, mỗi ánh mắt của em đều khiến anh cảm thấy thế giới này trở nên đẹp đẽ và đáng trân trọng hơn bao giờ hết.
+Em chính là niềm tin, là động lực để anh cố gắng mỗi ngày. Dù có mệt mỏi hay khó khăn, chỉ cần nghĩ đến em thôi, anh lại thấy lòng mình nhẹ nhõm và đầy nghị lực. Anh yêu cách em quan tâm, yêu sự dịu dàng xen lẫn mạnh mẽ nơi em, và yêu cả những điều nhỏ bé tưởng chừng vô nghĩa nhưng lại khiến trái tim anh rung động mãi không thôi.
+Anh muốn nắm tay em đi hết chặng đường dài phía trước, cùng nhau sẻ chia niềm vui, cùng nhau vượt qua những nỗi buồn. Em là tất cả, là một phần không thể thiếu trong cuộc đời anh.
+Anh yêu em, không chỉ bởi em là em, mà còn bởi khi ở bên em, anh được là chính mình, trọn vẹn và hạnh phúc.
+
+Em à, tình yêu với anh không phải là những lời hứa hoa mỹ, mà là sự hiện diện thật lòng trong từng khoảnh khắc. Anh muốn cùng em thức dậy vào những buổi sáng yên bình, cùng em đi qua những ngày nắng gắt hay mưa rào. Anh muốn trở thành bờ vai vững chắc để em tựa vào, là nơi em tìm thấy bình yên sau những chông chênh của cuộc sống.
+Em giống như bản nhạc dịu êm vang trong tâm hồn anh, khiến mọi muộn phiền dường như tan biến. Chỉ cần có em bên cạnh, anh đã thấy mình đủ đầy và may mắn hơn cả ngàn người. Anh tin rằng tình yêu của chúng ta không chỉ là một chặng đường ngắn, mà sẽ kéo dài đến hết những tháng ngày sau này, nơi mà mái tóc chúng ta dần điểm bạc nhưng bàn tay vẫn không rời nhau.
+
+Anh yêu em không phải vì em hoàn hảo, mà vì em là chính em với những điều giản dị, ngọt ngào, và cả những vụng về khiến anh thương vô cùng. Với anh, em mãi mãi là điều đẹp đẽ nhất trong cuộc đời này.`;
+
+  function switchToStage2(){
+    stage = 2; letterWrap.style.display='block'; cta.style.display='flex';
+    requestAnimationFrame(()=> letterWrap.classList.add('fly'));
+    typeWriter(LETTER_TEXT, 0, 28);
+    particles = Array.from({length:80}, ()=>new RainParticle());
+  }
+
+  let typingTimer;
+  function typeWriter(str, idx, speed){
+    clearTimeout(typingTimer);
+    if(idx <= str.length){
+      typer.innerHTML = str.slice(0, idx).replace(/\n/g, '<br>');
+      typingTimer = setTimeout(()=>typeWriter(str, idx+1, speed), speed);
+    }else{
+      typer.classList.remove('typewriter'); setTimeout(()=>typer.classList.add('typewriter'), 10);
+    }
+  }
+
+  heartBtn.addEventListener('click', ()=>{
+    overlay.classList.toggle('show');
+    for(let i=0;i<3;i++) spawnFirework(W()*0.5+(Math.random()-.5)*200, H()*0.5+(Math.random()-.5)*120);
+    for(let i=0;i<10;i++) particles.push(new RainParticle());
+  });
+
+  restartBtn.addEventListener('click', ()=>{
+    stage = 1; rainStart = performance.now(); countdownStarted=false; sparks=[];
+    cdEl.style.display='none'; overlay.classList.remove('show');
+    letterWrap.style.display='none'; letterWrap.classList.remove('fly'); cta.style.display='none';
+    typer.textContent=''; particles = Array.from({length:120}, ()=>new RainParticle());
+  });
+
+  // ===== Main loop =====
+  function loop(now){
+    if(stage===1) stage1Frame(now);
+    else {
+      drawBackground();
+      particles.forEach(p=>{p.draw(); p.update();});
+      sparks = sparks.filter(s=>s.alive()); sparks.forEach(s=>{s.step(); s.draw();});
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+
